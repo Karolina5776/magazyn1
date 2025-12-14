@@ -1,55 +1,127 @@
 import streamlit as st
 
-# Inicjalizacja globalnej listy magazynowej.
-# UWAGA: W standardowym Streamlit bez st.session_state,
-# ta lista będzie resetowana przy każdej interakcji z widgetem,
-# który powoduje ponowne uruchomienie skryptu (np. kliknięcie przycisku).
-# Jest to jednak celowe działanie, zgodnie z prośbą o "Bez sesji".
-# Dla persystencji danych między interakcjami zalecany jest st.session_state.
+# --- Konfiguracja i Inicjalizacja Stanu Sesji ---
+
+st.set_page_config(page_title="System Zarządzania Magazynem", layout="centered")
+
+# Inicjalizacja magazynu w st.session_state.
+# Używamy słownika: {nazwa_towaru (str): liczba_sztuk (int)}
 if 'magazyn' not in st.session_state:
-    st.session_state['magazyn'] = ["Laptop", "Monitor", "Klawiatura"]
+    st.session_state['magazyn'] = {
+        "Laptop": 10,
+        "Monitor": 5,
+        "Klawiatura": 25
+    }
 
-def dodaj_towar(nowy_towar):
-    """Dodaje towar do listy magazynowej."""
-    if nowy_towar and nowy_towar.strip() not in st.session_state['magazyn']:
-        st.session_state['magazyn'].append(nowy_towar.strip())
-    # Wymuś ponowne uruchomienie skryptu, aby odświeżyć widok
-    st.experimental_rerun()
+# --- Funkcje Logiki Magazynowej ---
 
-def usun_towar(indeks):
-    """Usuwa towar z listy magazynowej po indeksie."""
-    if 0 <= indeks < len(st.session_state['magazyn']):
-        st.session_state['magazyn'].pop(indeks)
-    # Wymuś ponowne uruchomienie skryptu, aby odświeżyć widok
-    st.experimental_rerun()
+def dodaj_lub_zaktualizuj_towar():
+    """Dodaje nowy towar lub zwiększa ilość istniejącego."""
+    
+    # Pobieranie wartości z widgetów input (używając ich kluczy)
+    nazwa_towaru = st.session_state.nazwa_towaru_input.strip()
+    ilosc = st.session_state.ilosc_input
+
+    if not nazwa_towaru:
+        st.error("Nazwa towaru jest wymagana.")
+        return
+
+    # Walidacja ilości (Streamlit number_input powinien to zapewnić, ale warto sprawdzić)
+    if not isinstance(ilosc, int) or ilosc <= 0:
+        st.error("Ilość musi być dodatnią liczbą całkowitą.")
+        return
+
+    # Logika dodawania/aktualizacji
+    if nazwa_towaru in st.session_state['magazyn']:
+        # Aktualizacja ilości
+        st.session_state['magazyn'][nazwa_towaru] += ilosc
+        st.success(f"Zaktualizowano: Dodano **{ilosc}** sztuk towaru '{nazwa_towaru}'. Nowy zapas: {st.session_state['magazyn'][nazwa_towaru]} szt.")
+    else:
+        # Dodanie nowego towaru
+        st.session_state['magazyn'][nazwa_towaru] = ilosc
+        st.success(f"Dodano nowy towar: '**{nazwa_towaru}**' w ilości **{ilosc}** sztuk.")
+
+    # Wyczyszczenie pola tekstowego po submicie (dla lepszego UX)
+    st.session_state.nazwa_towaru_input = ""
+    st.session_state.ilosc_input = 1 # Reset do domyślnej wartości 1
+
+
+def usun_towar(nazwa_towaru):
+    """Usuwa towar z listy magazynowej po nazwie."""
+    if nazwa_towaru in st.session_state['magazyn']:
+        del st.session_state['magazyn'][nazwa_towaru]
+        st.success(f"Usunięto towar '{nazwa_towaru}' z magazynu.")
 
 # --- Interfejs Użytkownika Streamlit ---
 
-st.title("Prosty Magazyn (Bez Stanu Sesji)")
-st.subheader("Lista Towarów")
+st.title("📦 System Zarządzania Magazynem")
+st.markdown("---")
 
-# Wyświetlanie aktualnej listy towarów
-if st.session_state['magazyn']:
-    for i, towar in enumerate(st.session_state['magazyn']):
-        col1, col2 = st.columns([0.8, 0.2])
-        with col1:
-            st.markdown(f"**{i+1}.** {towar}")
-        with col2:
-            # Użycie key jest kluczowe, aby Streamlit traktował każdy przycisk jako unikalny
-            if st.button("Usuń", key=f"usun_{i}"):
-                usun_towar(i)
-else:
-    st.info("Magazyn jest pusty.")
+# Sekcja Dodawania Towaru
+st.subheader("➕ Dodaj lub Zaktualizuj Zapas")
+
+# Użycie st.form do grupowania inputów i użycia pojedynczego przycisku submit
+with st.form("dodaj_formularz", clear_on_submit=False):
+    # Dzielimy formularz na kolumny
+    col_name, col_qty = st.columns([0.7, 0.3])
+
+    with col_name:
+        st.text_input(
+            "Nazwa Towaru:",
+            key='nazwa_towaru_input',
+            placeholder="Wprowadź nazwę produktu"
+        )
+    
+    with col_qty:
+        st.number_input(
+            "Ilość Sztuk:",
+            min_value=1,
+            step=1,
+            value=1,
+            key='ilosc_input'
+        )
+    
+    # Przycisk submit formularza
+    st.form_submit_button(
+        "Zapisz w Magazynie",
+        on_click=dodaj_lub_zaktualizuj_towar,
+        type="primary"
+    )
 
 st.markdown("---")
-st.subheader("Dodaj Nowy Towar")
 
-# Kontener do dodawania nowego towaru
-with st.form("dodaj_formularz", clear_on_submit=True):
-    nowy_towar = st.text_input("Nazwa Towaru")
-    dodaj_button = st.form_submit_button("Dodaj do Magazynu")
+# Sekcja Wyświetlania Magazynu
+st.subheader("Aktualny Stan Magazynu")
 
-    if dodaj_button:
-        # Streamlit automatycznie ponownie uruchomi skrypt po submit,
-        # ale ponieważ funkcja dodaj_towar wymusza reruna, będzie to działać poprawnie.
-        dodaj_towar(nowy_towar)
+magazyn_items = st.session_state['magazyn']
+
+if magazyn_items:
+    st.markdown(f"**Liczba unikalnych produktów:** **{len(magazyn_items)}**")
+    st.markdown("")
+
+    # Tworzenie nagłówków tabeli/listy za pomocą kolumn
+    header_col1, header_col2, header_col3 = st.columns([0.6, 0.2, 0.2])
+    header_col1.markdown("**Nazwa Towaru**")
+    header_col2.markdown("**Ilość (szt.)**")
+    
+    for nazwa, ilosc in magazyn_items.items():
+        # Tworzenie rzędu dla każdego produktu
+        row_col1, row_col2, row_col3 = st.columns([0.6, 0.2, 0.2])
+        
+        with row_col1:
+            st.write(nazwa)
+        
+        with row_col2:
+            st.write(ilosc)
+            
+        with row_col3:
+            # Przycisk usuwania z unikalnym kluczem i funkcją on_click
+            st.button(
+                "Usuń",
+                key=f"usun_{nazwa}",
+                on_click=usun_towar,
+                args=(nazwa,), 
+                help=f"Trwale usuń '{nazwa}' z magazynu."
+            )
+else:
+    st.info("Magazyn jest pusty. Użyj formularza 'Dodaj lub Zaktualizuj Zapas' powyżej, aby rozpocząć.")
